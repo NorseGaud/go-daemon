@@ -2,7 +2,9 @@ package main
 
 import (
 	"flag"
+	"fmt"
 	"log"
+	"net/http"
 	"os"
 	"syscall"
 	"time"
@@ -18,6 +20,7 @@ var (
 )
 
 func main() {
+
 	flag.Parse()
 	daemon.AddCommand(daemon.StringFlag(signal, "quit"), syscall.SIGQUIT, termHandler)
 	daemon.AddCommand(daemon.StringFlag(signal, "stop"), syscall.SIGTERM, termHandler)
@@ -57,7 +60,34 @@ func main() {
 	log.Println("- - - - - - - - - - - - - - -")
 	log.Println("daemon started")
 
-	go worker()
+	go func() {
+	LOOP:
+		for {
+			fmt.Println("in worker")
+			time.Sleep(time.Second) // this is work to be done by worker.
+			select {
+			case <-stop:
+				break LOOP
+			default:
+				httpClient := &http.Client{
+					Timeout: 5 * time.Second,
+				}
+				req, err := http.NewRequest("GET", "https://google.com", nil)
+				if err != nil {
+					log.Println("error creating request", "err", err)
+					break
+				}
+				resp, err := httpClient.Do(req)
+				if err != nil {
+					log.Println("error making WORKER GET request to google.com", "err", err)
+					break
+				}
+				defer resp.Body.Close()
+				fmt.Println("WORKER GET request to https://google.com status:", resp.Status)
+			}
+		}
+		done <- struct{}{}
+	}()
 
 	err = daemon.ServeSignals()
 	if err != nil {
@@ -71,19 +101,6 @@ var (
 	stop = make(chan struct{})
 	done = make(chan struct{})
 )
-
-func worker() {
-LOOP:
-	for {
-		time.Sleep(time.Second) // this is work to be done by worker.
-		select {
-		case <-stop:
-			break LOOP
-		default:
-		}
-	}
-	done <- struct{}{}
-}
 
 func termHandler(sig os.Signal) error {
 	log.Println("terminating...")

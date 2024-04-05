@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"syscall"
+	"time"
 )
 
 // A Context describes daemon context.
@@ -99,7 +100,7 @@ func (d *Context) parent() (child *os.Process, err error) {
 		Env:   d.Env,
 		Files: d.files(),
 		Sys: &syscall.SysProcAttr{
-			//Chroot:     d.Chroot,
+			// Chroot:     d.Chroot,
 			Credential: d.Credential,
 			Setsid:     true,
 		},
@@ -165,6 +166,7 @@ func (d *Context) openFiles() (err error) {
 }
 
 func (d *Context) closeFiles() (err error) {
+	time.Sleep(1 * time.Second) // allow children to get the proper FDs before they're closed: https://github.com/sevlyar/go-daemon/issues/100
 	cl := func(file **os.File) {
 		if *file != nil {
 			(*file).Close()
@@ -175,6 +177,7 @@ func (d *Context) closeFiles() (err error) {
 	cl(&d.wpipe)
 	cl(&d.logFile)
 	cl(&d.nullFile)
+
 	if d.pidFile != nil {
 		d.pidFile.Close()
 		d.pidFile = nil
