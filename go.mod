@@ -1,4 +1,4 @@
-module github.com/NorseGaud/go-daemon
+module github.com/norsegaud/go-daemon
 
 go 1.13
 
