@@ -60,34 +60,7 @@ func main() {
 	log.Println("- - - - - - - - - - - - - - -")
 	log.Println("daemon started")
 
-	go func() {
-	LOOP:
-		for {
-			fmt.Println("in worker")
-			time.Sleep(time.Second) // this is work to be done by worker.
-			select {
-			case <-stop:
-				break LOOP
-			default:
-				httpClient := &http.Client{
-					Timeout: 5 * time.Second,
-				}
-				req, err := http.NewRequest("GET", "https://google.com", nil)
-				if err != nil {
-					log.Println("error creating request", "err", err)
-					break
-				}
-				resp, err := httpClient.Do(req)
-				if err != nil {
-					log.Println("error making WORKER GET request to google.com", "err", err)
-					break
-				}
-				defer resp.Body.Close()
-				fmt.Println("WORKER GET request to https://google.com status:", resp.Status)
-			}
-		}
-		done <- struct{}{}
-	}()
+	go worker()
 
 	err = daemon.ServeSignals()
 	if err != nil {
@@ -101,6 +74,34 @@ var (
 	stop = make(chan struct{})
 	done = make(chan struct{})
 )
+
+func worker() {
+LOOP:
+	for {
+		time.Sleep(time.Second) // this is work to be done by worker.
+		select {
+		case <-stop:
+			break LOOP
+		default:
+			httpClient := &http.Client{
+				Timeout: 5 * time.Second,
+			}
+			req, err := http.NewRequest("GET", "http://1.1.1.1", nil)
+			if err != nil {
+				log.Println("error creating request", "err", err)
+				return
+			}
+			resp, err := httpClient.Do(req)
+			if err != nil {
+				log.Println("error making MAIN GET request", "err", err)
+				return
+			}
+			defer resp.Body.Close()
+			fmt.Println("MAIN GET request status:", resp.Status)
+		}
+	}
+	done <- struct{}{}
+}
 
 func termHandler(sig os.Signal) error {
 	log.Println("terminating...")

@@ -116,6 +116,71 @@ func (d *Context) parent() (child *os.Process, err error) {
 	d.rpipe.Close()
 	encoder := json.NewEncoder(d.wpipe)
 	err = encoder.Encode(d)
+
+	// wait for worker to start running or else network calls fail: https://github.com/sevlyar/go-daemon/issues/100
+	time.Sleep(2 * time.Second)
+
+	return
+}
+
+var initialized = false
+
+func (d *Context) child() (err error) {
+	if initialized {
+		return os.ErrInvalid
+	}
+	initialized = true
+
+	decoder := json.NewDecoder(os.Stdin)
+	if err = decoder.Decode(d); err != nil {
+		return
+	}
+
+	// create PID file after context decoding to know PID file full path.
+	if len(d.PidFileName) > 0 {
+		d.pidFile = NewLockFile(os.NewFile(4, d.PidFileName))
+		if err = d.pidFile.WritePid(); err != nil {
+			return
+		}
+		defer func() {
+			if err != nil {
+				d.pidFile.Remove()
+			}
+		}()
+	}
+
+	if err = syscallDup(3, 0); err != nil {
+		return
+	}
+
+	if d.Umask != 0 {
+		syscall.Umask(int(d.Umask))
+	}
+	if len(d.Chroot) > 0 {
+		err = syscall.Chroot(d.Chroot)
+		if err != nil {
+			return
+		}
+	}
+
+	return
+}
+
+func (d *Context) prepareEnv() (err error) {
+	if d.abspath, err = osExecutable(); err != nil {
+		return
+	}
+
+	if len(d.Args) == 0 {
+		d.Args = os.Args
+	}
+
+	mark := fmt.Sprintf("%s=%s", MARK_NAME, MARK_VALUE)
+	if len(d.Env) == 0 {
+		d.Env = os.Environ()
+	}
+	d.Env = append(d.Env, mark)
+
 	return
 }
 
@@ -185,24 +250,6 @@ func (d *Context) closeFiles() (err error) {
 	return
 }
 
-func (d *Context) prepareEnv() (err error) {
-	if d.abspath, err = osExecutable(); err != nil {
-		return
-	}
-
-	if len(d.Args) == 0 {
-		d.Args = os.Args
-	}
-
-	mark := fmt.Sprintf("%s=%s", MARK_NAME, MARK_VALUE)
-	if len(d.Env) == 0 {
-		d.Env = os.Environ()
-	}
-	d.Env = append(d.Env, mark)
-
-	return
-}
-
 func (d *Context) files() (f []*os.File) {
 	log := d.nullFile
 	if d.logFile != nil {
@@ -219,49 +266,6 @@ func (d *Context) files() (f []*os.File) {
 	if d.pidFile != nil {
 		f = append(f, d.pidFile.File) // (4) pid file
 	}
-	return
-}
-
-var initialized = false
-
-func (d *Context) child() (err error) {
-	if initialized {
-		return os.ErrInvalid
-	}
-	initialized = true
-
-	decoder := json.NewDecoder(os.Stdin)
-	if err = decoder.Decode(d); err != nil {
-		return
-	}
-
-	// create PID file after context decoding to know PID file full path.
-	if len(d.PidFileName) > 0 {
-		d.pidFile = NewLockFile(os.NewFile(4, d.PidFileName))
-		if err = d.pidFile.WritePid(); err != nil {
-			return
-		}
-		defer func() {
-			if err != nil {
-				d.pidFile.Remove()
-			}
-		}()
-	}
-
-	if err = syscallDup(3, 0); err != nil {
-		return
-	}
-
-	if d.Umask != 0 {
-		syscall.Umask(int(d.Umask))
-	}
-	if len(d.Chroot) > 0 {
-		err = syscall.Chroot(d.Chroot)
-		if err != nil {
-			return
-		}
-	}
-
 	return
 }
 
