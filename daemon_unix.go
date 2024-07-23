@@ -117,8 +117,10 @@ func (d *Context) parent() (child *os.Process, err error) {
 	encoder := json.NewEncoder(d.wpipe)
 	err = encoder.Encode(d)
 
-	// wait for worker to start running or else network calls fail: https://github.com/sevlyar/go-daemon/issues/100
-	time.Sleep(2 * time.Second)
+	// wait for worker to start running or else network calls fail:
+	// // https://github.com/sevlyar/go-daemon/issues/100
+	// // https://github.com/sevlyar/go-daemon/issues/103
+	time.Sleep(5 * time.Second)
 
 	return
 }
